@@ -3,7 +3,7 @@
 I am going to join a team which works on a high-load backend infrastructure of a prediction market.
 So the goal is to create a playground for my experiments and learning.
 This should be a local experiment lab for learning production-grade backend infrastructure: Node.js + Postgres + PgBouncer + Redis + Prometheus + Grafana.
-The system should be a prediction market with Logarithmic Math Scoring Rules math.
+The system should be a prediction market with Logarithmic Market Scoring Rules math.
 
 ## Goals
 - Learn how to build a production-grade high-load backend infrastructure
