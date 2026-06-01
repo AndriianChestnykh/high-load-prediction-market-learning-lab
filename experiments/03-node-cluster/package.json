@@ -1,0 +1,13 @@
+{
+  "name": "@hli/exp-03-node-cluster",
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "start": "node app.js"
+  },
+  "dependencies": {
+    "@hli/shared": "workspace:*",
+    "fastify": "^4.28.1",
+    "dotenv": "^16.4.5"
+  }
+}
