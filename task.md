@@ -194,8 +194,9 @@ Load generation:
 - PgBouncer -> Postgres (:5432).
 - The outbox relay is ordinary transactional SELECT/UPDATE traffic -> goes through
   PgBouncer like the rest of the app.
-- Once PgBouncer is in place (Phase 1+), only migrations connect DIRECTLY to Postgres
-  (:5432), bypassing PgBouncer.
+- Once PgBouncer is in place (Phase 1+), all app runtime traffic goes through PgBouncer.
+  Migrations, admin tasks, and exporters (e.g. postgres_exporter) may connect directly
+  to Postgres (:5432) where appropriate.
 
 ### PgBouncer
 - Pool mode: transaction (server conn returned to pool after each transaction — the mode

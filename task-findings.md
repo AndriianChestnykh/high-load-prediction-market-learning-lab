@@ -6,12 +6,6 @@
 
    Decide whether Phase 0 writes outbox rows already, or whether outbox/event insertion is Phase 3-only.
 
-4. **Direct Postgres connection rule has exceptions**
-
-   `task.md:195` says only migrations connect directly to Postgres after PgBouncer is in place. But `task.md:213` says `DIRECT_DATABASE_URL` is for migrations/admin, and `task.md:241` implies `postgres_exporter` also connects to Postgres.
-
-   Reword to something like: app runtime traffic goes through PgBouncer; migrations, admin tasks, and exporters may connect directly where appropriate.
-
 5. **Compose readiness does not cover host-run app**
 
    `task.md:177` says the Node app runs on the host, not in compose. `task.md:223` says compose healthchecks and `depends_on` ensure Postgres/Redis are ready before app start.
