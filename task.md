@@ -2,7 +2,7 @@
 
 I am going to join a team which works on a high-load backend infrastructure of a prediction market.
 So the goal is to create a playground for my experiments and learning.
-This should be a local experiment lab for learning production-grade backend infrastructure: Node.js + Postgres + PgBouncer + Redis + Prometheus + Grafana.
+This should be a local experiment lab for learning production-grade backend infrastructure: Node.js (TypeScript) + Postgres + PgBouncer + Redis + Prometheus + Grafana.
 The system should be a prediction market with Logarithmic Market Scoring Rules math.
 
 ## Goals
@@ -35,8 +35,8 @@ Two operating modes for experiments:
      ceiling is — not just the happy path.
 
 Load generation:
-   - Tool: k6 (scriptable in JS, native Prometheus output so load and infra metrics
-     align on the same Grafana timeline).
+   - Tool: k6 (scripts authored in TypeScript, bundled to JS for the k6 runtime; native
+     Prometheus output so load and infra metrics align on the same Grafana timeline).
    - Model: open model (fixed arrival rate independent of response time) so queueing
      and backpressure are revealed rather than hidden — essential for the slow-consumer
      and breakpoint experiments.
@@ -170,6 +170,20 @@ Load generation:
 
 ## Infra Scaffolding
 
+### Language & toolchain
+- ALL application code is TypeScript (the HTTP app, the outbox relay, the
+  trade-notifications consumer, the LMSR math, the seed script, migrations, and the k6
+  load scripts). No plain-JS source files.
+- tsconfig: `strict: true`, target a modern Node LTS (ES2022+), `module: nodenext`,
+  `bigint` is first-class — keep money types as `bigint` end-to-end and only cross to
+  `string` at the node-postgres boundary (BIGINT in/out as string).
+- Dev/run: execute TypeScript directly with `tsx` (no separate build step in the dev loop)
+  so `--inspect` / profiling against the running source stays easy for stress-mode
+  experiments. A `tsc --noEmit` typecheck runs in the build/CI path.
+- Type the domain explicitly: `Outcome = 'yes' | 'no'`, money as `bigint` micro-units,
+  shared event payload types (TradeEvent, PriceChangeEvent) reused by the relay and
+  consumer so the outbox contract is checked at compile time.
+
 ### Layout
 - Infra in docker-compose: Postgres, PgBouncer, Redis. (Prometheus/Grafana + exporters
   added later under observability.) Phase note: PgBouncer is defined in compose from the
@@ -208,7 +222,7 @@ Load generation:
   reserve_pool. Observe cl_waiting under load.
 
 ### Migrations
-- Tool: node-pg-migrate (plain SQL-ish JS migrations, no ORM baggage).
+- Tool: node-pg-migrate (SQL-ish migrations authored in TypeScript, no ORM baggage).
 - Connects via DIRECT_DATABASE_URL (straight to Postgres :5432), not through PgBouncer.
 
 ### Environment / config
