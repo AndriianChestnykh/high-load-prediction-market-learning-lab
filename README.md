@@ -207,10 +207,11 @@ src/
   server.ts           HTTP server + graceful SIGTERM shutdown
 
 migrations/
-  001_initial_schema.ts   node-pg-migrate migration
+  001_initial_schema.ts   node-pg-migrate migration (schema only)
 
 scripts/
   seed.ts             seed 10k users + 100 markets
+  truncate.ts         wipe all rows + reset sequences (npm run truncate/reset)
 
 k6/
   baseline.ts         300 RPS constant-arrival-rate scenario
