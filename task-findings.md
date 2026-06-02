@@ -1,11 +1,5 @@
 # Spec Inconsistencies in `task.md`
 
-2. **Outbox/event timing conflicts across phases**
-
-   `task.md:86` and `task.md:90` say outbox events are inserted inside the trade transaction, and `task.md:98` says every trade emits both trade and price-change events. But Phase 3 at `task.md:324` says trade starts emitting those events then.
-
-   Decide whether Phase 0 writes outbox rows already, or whether outbox/event insertion is Phase 3-only.
-
 5. **Compose readiness does not cover host-run app**
 
    `task.md:177` says the Node app runs on the host, not in compose. `task.md:223` says compose healthchecks and `depends_on` ensure Postgres/Redis are ready before app start.

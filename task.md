@@ -306,7 +306,9 @@ Build in measurable increments. Stand up only enough to run the next experiment.
   - docker-compose: Postgres + Redis. node-pg-migrate schema (users, markets, trades,
     positions, outbox). Seed ~10k users + ~100 markets.
   - HTTP app (single process, on host): LMSR math, trade endpoint with optimistic
-    concurrency (version check + retry), atomic trade transaction.
+    concurrency (version check + retry), atomic trade transaction. The transaction
+    already inserts trade + price-change events into the outbox (the outbox is written
+    from Phase 0; only the relay/consumer that drain it are deferred to Phase 3).
   - k6 baseline scenario hitting the app. App talks DIRECTLY to Postgres (no PgBouncer yet)
     to establish a "before" number.
 
@@ -325,7 +327,8 @@ Build in measurable increments. Stand up only enough to run the next experiment.
   - Wire k6 -> Prometheus remote-write.
 
 - Phase 3 — Redis async path:
-  - Trade emits trade + price-change events into the outbox (within the trade transaction).
+  - (Trade already emits trade + price-change events into the outbox within the trade
+    transaction — that was wired up in Phase 0.)
   - Outbox relay (separate process) drains outbox -> XADD to the event streams.
   - Single trade-notifications consumer (separate process) subscribes to both streams,
     with a CONFIGURABLE processing rate to emulate a slow consumer.
