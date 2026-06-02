@@ -1,7 +1,11 @@
 import "dotenv/config";
 import pg from "pg";
 
-const pool = new pg.Pool({ connectionString: process.env["DATABASE_URL"] });
+// Admin task — connect directly to Postgres, bypassing PgBouncer.
+const pool = new pg.Pool({
+  connectionString:
+    process.env["DIRECT_DATABASE_URL"] ?? process.env["DATABASE_URL"],
+});
 
 const client = await pool.connect();
 try {

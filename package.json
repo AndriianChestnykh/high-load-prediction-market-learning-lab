@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "tsx src/server.ts",
-    "migrate": "node-pg-migrate up --tsx",
+    "migrate": "node-pg-migrate up --tsx -d DIRECT_DATABASE_URL",
     "seed": "tsx scripts/seed.ts",
     "truncate": "tsx scripts/truncate.ts",
     "reset": "npm run truncate && npm run seed",

@@ -27,22 +27,38 @@ services:
       retries: 10
       start_period: 5s
 
-  # pgbouncer:
-  #   image: bitnami/pgbouncer:latest
-  #   environment:
-  #     POSTGRESQL_HOST: postgres
-  #     POSTGRESQL_PORT: 5432
-  #     POSTGRESQL_USERNAME: lab
-  #     POSTGRESQL_PASSWORD: lab
-  #     POSTGRESQL_DATABASE: predmarket
-  #     PGBOUNCER_POOL_MODE: transaction
-  #     PGBOUNCER_DEFAULT_POOL_SIZE: 20
-  #     PGBOUNCER_MAX_CLIENT_CONN: 200
-  #   ports:
-  #     - "6432:6432"
-  #   depends_on:
-  #     postgres:
-  #       condition: service_healthy
+  # Phase 1: transaction-mode pooler between the app and Postgres.
+  # App runtime traffic -> :6432 (this). Migrations/admin -> :5432 (direct).
+  pgbouncer:
+    image: edoburu/pgbouncer:latest
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: lab
+      DB_PASSWORD: lab
+      DB_NAME: predmarket
+      LISTEN_PORT: 6432
+      # transaction mode: server conn returned to the pool after each txn — the
+      # mode worth tuning for high load. It breaks server-side prepared
+      # statements, but node-postgres uses unnamed ones by default, so we're OK.
+      POOL_MODE: transaction
+      # Tuning knobs — change ONE at a time and measure vs. the Phase 0 baseline.
+      DEFAULT_POOL_SIZE: 20
+      MAX_CLIENT_CONN: 200
+      AUTH_TYPE: scram-sha-256
+      # Expose the admin/stats console (cl_waiting, pools) for Phase 2 scraping.
+      ADMIN_USERS: lab
+    ports:
+      - "6432:6432"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p 6432 -U lab -d predmarket"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
 
 volumes:
   postgres_data:

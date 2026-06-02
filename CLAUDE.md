@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ```bash
 # Infrastructure (run first)
-docker compose up -d          # start Postgres (:5432) + Redis (:6379)
+docker compose up -d          # start Postgres (:5432) + Redis (:6379) + PgBouncer (:6432)
 docker compose down -v        # wipe all data (Postgres volume)
 
 # App
@@ -25,14 +25,16 @@ BASE_URL=http://localhost:3000 k6 run --compatibility-mode=extended k6/baseline.
 docker compose down -v && docker compose up -d && npm run migrate && npm run seed
 ```
 
-Migrations use `DIRECT_DATABASE_URL` (direct Postgres :5432); the app uses `DATABASE_URL` (PgBouncer :6432 in Phase 1+, direct Postgres in Phase 0).
+Migrations, seed, and truncate use `DIRECT_DATABASE_URL` (direct Postgres :5432, bypassing the pooler); the app uses `DATABASE_URL` (PgBouncer :6432 from Phase 1 onward).
 
 ## Architecture
 
-**Phase 0 (current):** Node.js/TypeScript HTTP app → Postgres. No PgBouncer, no Redis relay, no metrics yet. The outbox table is written but nothing drains it.
+**Phase 1 (current):** Node.js/TypeScript HTTP app → PgBouncer (transaction mode, :6432) → Postgres. No Redis relay, no metrics yet. The outbox table is written but nothing drains it.
+
+**Connection topology:** the app connects only to PgBouncer (`DATABASE_URL` → :6432); PgBouncer multiplexes `DEFAULT_POOL_SIZE=20` real Postgres connections across `MAX_CLIENT_CONN=200` clients. Migrations/seed/truncate connect directly to Postgres (`DIRECT_DATABASE_URL` → :5432). Transaction mode breaks server-side *named* prepared statements; node-postgres uses unnamed ones by default, so the app is compatible. Image: `edoburu/pgbouncer`. Inspect pools via `psql .../pgbouncer -c "SHOW POOLS;"` (watch `cl_waiting`).
 
 **Phased build plan:**
-- Phase 1 — insert PgBouncer (transaction mode) between app and Postgres
+- Phase 1 (done) — PgBouncer (transaction mode) inserted between app and Postgres
 - Phase 2 — Prometheus/Grafana observability
 - Phase 3 — Redis Streams async path (outbox relay + trade-notifications consumer)
 - Phase 4 — stress/breakpoint experiments

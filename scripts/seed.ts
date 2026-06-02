@@ -19,8 +19,10 @@ const QUESTIONS = [
   "Will the experiment succeed?",
 ];
 
+// Admin/bulk task — connect directly to Postgres, bypassing PgBouncer.
 const pool = new pg.Pool({
-  connectionString: process.env["DATABASE_URL"],
+  connectionString:
+    process.env["DIRECT_DATABASE_URL"] ?? process.env["DATABASE_URL"],
   max: 10,
 });
 

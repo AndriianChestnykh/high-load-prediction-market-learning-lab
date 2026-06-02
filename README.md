@@ -4,7 +4,7 @@ Binary prediction market (LMSR pricing) built as a learning lab for high-load ba
 
 **Stack:** Node.js + TypeScript + Postgres + Redis + PgBouncer (Phase 1+) + Prometheus/Grafana (Phase 2+)
 
-**Build phases:** Phase 0 (current) → Phase 1 PgBouncer → Phase 2 Observability → Phase 3 Redis async → Phase 4 Stress experiments
+**Build phases:** Phase 0 → **Phase 1 PgBouncer (current)** → Phase 2 Observability → Phase 3 Redis async → Phase 4 Stress experiments
 
 ---
 
@@ -26,7 +26,7 @@ Binary prediction market (LMSR pricing) built as a learning lab for high-load ba
 docker compose up -d
 ```
 
-Postgres on `:5432`, Redis on `:6379`. Waits for both to be healthy before returning.
+Postgres on `:5432`, Redis on `:6379`, **PgBouncer on `:6432`** (transaction mode, waits for Postgres to be healthy first). Compose waits for all three to be healthy before returning.
 
 ### 2. Install dependencies
 
@@ -43,13 +43,13 @@ cp .env.example .env
 Default values work with docker compose out of the box:
 
 ```
-DATABASE_URL=postgres://lab:lab@localhost:5432/predmarket
+DATABASE_URL=postgres://lab:lab@localhost:6432/predmarket
 DIRECT_DATABASE_URL=postgres://lab:lab@localhost:5432/predmarket
 REDIS_URL=redis://localhost:6379
 PORT=3000
 ```
 
-`DATABASE_URL` is used by the app at runtime. `DIRECT_DATABASE_URL` is used by migrations (bypasses PgBouncer in later phases). Both point straight to Postgres in Phase 0.
+`DATABASE_URL` is used by the app at runtime and points at **PgBouncer (`:6432`)** from Phase 1 onward. `DIRECT_DATABASE_URL` points straight to Postgres (`:5432`) and is used by migrations, the seed/truncate scripts, and any admin task that must bypass the pooler.
 
 ### 4. Run migrations
 
@@ -85,7 +85,7 @@ App listens on `http://localhost:3000`. Uses `tsx` to run TypeScript directly wi
 | `npm run migrate` | Apply pending migrations |
 | `npm run seed` | Seed users + markets |
 | `npm run typecheck` | `tsc --noEmit` (no emit, just type errors) |
-| `docker compose up -d` | Start Postgres + Redis |
+| `docker compose up -d` | Start Postgres + Redis + PgBouncer |
 | `docker compose down` | Stop containers, keep data |
 | `docker compose down -v` | Stop containers + **wipe all data** (Postgres volume deleted) |
 
@@ -213,8 +213,43 @@ scripts/
 k6/
   baseline.ts         300 RPS constant-arrival-rate scenario
 
-docker-compose.yml    Postgres 16 + Redis 7 (PgBouncer commented out, activated Phase 1)
+docker-compose.yml    Postgres 16 + Redis 7 + PgBouncer (edoburu, transaction mode)
 ```
+
+---
+
+## PgBouncer (Phase 1)
+
+A transaction-mode connection pooler sits between the app and Postgres. The app
+connects only to PgBouncer (`:6432`); PgBouncer multiplexes a small pool of real
+Postgres connections (`DEFAULT_POOL_SIZE=20`) across up to `MAX_CLIENT_CONN=200`
+clients. This is the single place where the real Postgres connection count is
+controlled and tuned for high load.
+
+| Path | Connects to | Used by |
+|------|-------------|---------|
+| `DATABASE_URL` → `:6432` | PgBouncer | app runtime traffic |
+| `DIRECT_DATABASE_URL` → `:5432` | Postgres directly | migrations, seed, truncate, admin |
+
+**Transaction mode** returns each server connection to the pool after every
+transaction. It breaks *server-side (named) prepared statements*, but
+`node-postgres` uses unnamed prepared statements by default, so the app is
+compatible as-is. Watch for this footgun if a named-statement library is added.
+
+Inspect the pooler live via its admin console:
+
+```bash
+docker compose exec postgres \
+  psql "postgres://lab:lab@pgbouncer:6432/pgbouncer" -c "SHOW POOLS;"
+```
+
+Key columns: `cl_waiting` (clients queued for a server connection — should stay
+0 under the baseline) and `pool_mode` (should read `transaction` for the
+`predmarket` pool).
+
+**Tuning knobs** (`docker-compose.yml` → `pgbouncer.environment`):
+`DEFAULT_POOL_SIZE`, `MAX_CLIENT_CONN`, `POOL_MODE`. Change one, re-run the
+baseline load test, and compare p99 / error rate against the Phase 0 numbers.
 
 ---
 
