@@ -15,7 +15,7 @@ export function up(pgm: MigrationBuilder): void {
     q_yes: { type: "float", notNull: true, default: 0 },
     q_no: { type: "float", notNull: true, default: 0 },
     version: { type: "integer", notNull: true, default: 0 },
-    state: { type: "varchar(10)", notNull: true, default: "'open'" },
+    state: { type: "varchar(10)", notNull: true, default: "open" },
     winning_outcome: { type: "varchar(3)" },
   });
 

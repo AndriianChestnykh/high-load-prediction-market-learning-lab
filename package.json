@@ -7,6 +7,8 @@
     "dev": "tsx src/server.ts",
     "migrate": "node-pg-migrate up --tsx",
     "seed": "tsx scripts/seed.ts",
+    "truncate": "tsx scripts/truncate.ts",
+    "reset": "npm run truncate && npm run seed",
     "typecheck": "tsc --noEmit",
     "load-test": "k6 run --compatibility-mode=extended k6/baseline.ts",
     "test": "tsx --test tests/e2e.test.ts"

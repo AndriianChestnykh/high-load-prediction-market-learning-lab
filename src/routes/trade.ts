@@ -46,7 +46,11 @@ router.post("/trade", async (req: Request, res: Response): Promise<void> => {
     typeof shares !== "number" ||
     shares <= 0
   ) {
-    res.status(400).json({ error: "Invalid request body" });
+    res.status(400).json({
+      error: "Invalid request body",
+      received: { user_id, market_id, outcome, shares },
+      required: { user_id: "number", market_id: "number", outcome: "'yes'|'no'", shares: "number > 0" },
+    });
     return;
   }
 
@@ -64,13 +68,19 @@ router.post("/trade", async (req: Request, res: Response): Promise<void> => {
       const market = await getMarketForUpdate(client, market_id);
       if (!market) {
         await client.query("ROLLBACK");
-        res.status(404).json({ error: "Market not found" });
+        res.status(404).json({ error: "Market not found", market_id });
         return;
       }
 
       if (market.state !== "open") {
         await client.query("ROLLBACK");
-        res.status(409).json({ error: "Market is not open" });
+        res.status(409).json({
+          error: "Market is not open",
+          market_id: market.id,
+          question: market.question,
+          state: market.state,
+          winning_outcome: market.winning_outcome,
+        });
         return;
       }
 
@@ -85,13 +95,19 @@ router.post("/trade", async (req: Request, res: Response): Promise<void> => {
       const user = await getUser(client, user_id);
       if (!user) {
         await client.query("ROLLBACK");
-        res.status(404).json({ error: "User not found" });
+        res.status(404).json({ error: "User not found", user_id });
         return;
       }
 
       if (user.balance < cost) {
         await client.query("ROLLBACK");
-        res.status(402).json({ error: "Insufficient balance" });
+        res.status(402).json({
+          error: "Insufficient balance",
+          user_id,
+          balance: user.balance.toString(),
+          cost: cost.toString(),
+          shortfall: (cost - user.balance).toString(),
+        });
         return;
       }
 
@@ -169,7 +185,11 @@ router.post("/trade", async (req: Request, res: Response): Promise<void> => {
   }
 
   console.error("Trade failed after max retries:", lastError);
-  res.status(409).json({ error: "Trade failed: version conflict after max retries" });
+  res.status(409).json({
+    error: "Version conflict: trade failed after max retries",
+    market_id,
+    retries: MAX_RETRIES,
+  });
 });
 
 export default router;
