@@ -1,11 +1,5 @@
 # Spec Inconsistencies in `task.md`
 
-1. **HTTP app vs Redis process boundary**
-
-   `task.md:177` and `task.md:181` say the HTTP app runs separately and only serves HTTP plus writes trades/outbox rows. But `task.md:191` says `Node app -> Redis (:6379) via ioredis (Streams + outbox relay)`.
-
-   This should likely be clarified as relay/consumer processes connecting to Redis, not the HTTP app, unless the HTTP app is also intended to own Redis behavior.
-
 2. **Outbox/event timing conflicts across phases**
 
    `task.md:86` and `task.md:90` say outbox events are inserted inside the trade transaction, and `task.md:98` says every trade emits both trade and price-change events. But Phase 3 at `task.md:324` says trade starts emitting those events then.

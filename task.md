@@ -188,7 +188,9 @@ Load generation:
   never connects to Postgres directly — PgBouncer is the single place we control the real
   connection count. (Exception: the Phase 0 baseline runs before PgBouncer exists, so the
   app connects straight to Postgres :5432 to establish a "before" number.)
-- Node app -> Redis (:6379) via ioredis (Streams + outbox relay).
+- Outbox relay -> Redis (:6379) via ioredis: reads unpublished outbox rows from Postgres, XADDs to streams.
+- Trade-notifications consumer -> Redis (:6379) via ioredis: XREADGROUP, XACK, XAUTOCLAIM.
+- The HTTP app does NOT connect to Redis directly; it writes outbox rows inside the trade transaction and leaves Redis interaction entirely to the relay and consumer processes.
 - PgBouncer -> Postgres (:5432).
 - The outbox relay is ordinary transactional SELECT/UPDATE traffic -> goes through
   PgBouncer like the rest of the app.
