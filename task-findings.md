@@ -6,12 +6,6 @@
 
    Decide whether Phase 0 writes outbox rows already, or whether outbox/event insertion is Phase 3-only.
 
-3. **PgBouncer phase status is unclear**
-
-   `task.md:174` says PgBouncer is defined in compose from the start but inactive until Phase 1. `task.md:189` says Phase 0 runs before PgBouncer exists. Phase 0 at `task.md:302` only lists Postgres + Redis.
-
-   Pick one rule: PgBouncer is absent in Phase 0, or present but unused.
-
 4. **Direct Postgres connection rule has exceptions**
 
    `task.md:195` says only migrations connect directly to Postgres after PgBouncer is in place. But `task.md:213` says `DIRECT_DATABASE_URL` is for migrations/admin, and `task.md:241` implies `postgres_exporter` also connects to Postgres.
