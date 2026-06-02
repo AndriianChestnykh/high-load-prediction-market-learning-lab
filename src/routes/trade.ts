@@ -12,6 +12,11 @@ import {
 } from "../db/queries.js";
 import { tradeCostMicroUnits, prices } from "../math/lmsr.js";
 import type { Outcome } from "../types/index.js";
+import {
+  tradeVersionConflicts,
+  tradeRetriesExhausted,
+  tradeAttempts,
+} from "../metrics.js";
 
 const MAX_RETRIES = 5;
 const BASE_DELAY_MS = 10;
@@ -124,6 +129,7 @@ router.post("/trade", async (req: Request, res: Response): Promise<void> => {
 
       if (!updated) {
         await client.query("ROLLBACK");
+        tradeVersionConflicts.inc();
         lastError = new Error("Version conflict");
         continue;
       }
@@ -169,6 +175,9 @@ router.post("/trade", async (req: Request, res: Response): Promise<void> => {
 
       await client.query("COMMIT");
 
+      // attempt is 0-based; record the number of tries this trade needed.
+      tradeAttempts.observe(attempt + 1);
+
       res.status(201).json({
         trade_id: tradeId,
         cost: cost.toString(),
@@ -184,6 +193,7 @@ router.post("/trade", async (req: Request, res: Response): Promise<void> => {
     }
   }
 
+  tradeRetriesExhausted.inc();
   console.error("Trade failed after max retries:", lastError);
   res.status(409).json({
     error: "Version conflict: trade failed after max retries",

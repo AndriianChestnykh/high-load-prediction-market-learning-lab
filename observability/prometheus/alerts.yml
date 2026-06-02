@@ -1,0 +1,28 @@
+groups:
+  - name: predmarket-phase2
+    rules:
+      # PgBouncer pool saturation: clients queued waiting for a server
+      # connection. Under the baseline this should stay at 0 — sustained
+      # waiting means default_pool_size is too small for the offered load.
+      - alert: PgBouncerClientsWaiting
+        expr: sum(pgbouncer_pools_client_waiting_connections) > 0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "PgBouncer has clients waiting for a server connection"
+          description: "cl_waiting > 0 for 1m — pool likely too small (saturation)."
+
+      # HTTP p99 latency over the 200ms baseline budget.
+      - alert: HttpP99LatencyBreach
+        expr: >
+          histogram_quantile(
+            0.99,
+            sum(rate(http_request_duration_seconds_bucket[1m])) by (le)
+          ) > 0.2
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "HTTP p99 latency over the 200ms budget"
+          description: "p99 request latency > 200ms for 2m (baseline budget breach)."

@@ -60,5 +60,85 @@ services:
       retries: 10
       start_period: 10s
 
+  # ---------------------------------------------------------------------------
+  # Phase 2: observability. Exporters expose infra metrics; Prometheus scrapes
+  # everything (incl. the host app at host.docker.internal:3000) and receives
+  # k6 remote-write; Grafana renders the dashboards.
+  # ---------------------------------------------------------------------------
+
+  # Postgres metrics: connections, txn rate, deadlocks, tuples.
+  postgres_exporter:
+    image: quay.io/prometheuscommunity/postgres-exporter:latest
+    environment:
+      DATA_SOURCE_NAME: "postgresql://lab:lab@postgres:5432/predmarket?sslmode=disable"
+    ports:
+      - "9187:9187"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # PgBouncer metrics from its admin console: cl_waiting, pool saturation.
+  # (Dedicated exporter — postgres_exporter can't speak the pgbouncer admin
+  # protocol. Reads SHOW POOLS/STATS as the admin user.)
+  pgbouncer_exporter:
+    image: quay.io/prometheuscommunity/pgbouncer-exporter:latest
+    command:
+      - "--pgBouncer.connectionString=postgres://lab:lab@pgbouncer:6432/pgbouncer?sslmode=disable"
+    ports:
+      - "9127:9127"
+    depends_on:
+      pgbouncer:
+        condition: service_healthy
+
+  # Redis metrics (idle now; the async path lands in Phase 3).
+  redis_exporter:
+    image: oliver006/redis_exporter:latest
+    environment:
+      REDIS_ADDR: "redis://redis:6379"
+    ports:
+      - "9121:9121"
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  prometheus:
+    image: prom/prometheus:latest
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      # Accept k6's Prometheus remote-write so load + infra share one timeline.
+      - "--web.enable-remote-write-receiver"
+    volumes:
+      - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./observability/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+    # Resolve the host (where the Node app runs) from inside the container.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      - postgres_exporter
+      - pgbouncer_exporter
+      - redis_exporter
+
+  grafana:
+    image: grafana/grafana:latest
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    # Host :3001 (app already owns :3000); Grafana listens on :3000 in-container.
+    ports:
+      - "3001:3000"
+    depends_on:
+      - prometheus
+
 volumes:
   postgres_data:
+  prometheus_data:
+  grafana_data:

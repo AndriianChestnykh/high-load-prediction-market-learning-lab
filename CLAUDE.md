@@ -18,7 +18,8 @@ npm run typecheck             # tsc --noEmit
 
 # Testing
 npm test                      # run e2e tests (tests/e2e.test.ts)
-npm run load-test             # k6 baseline: 300 RPS, 2 min
+npm run load-test             # k6 baseline (constant-arrival 300 RPS)
+npm run load-test:rw          # k6 baseline + Prometheus remote-write (Phase 2)
 BASE_URL=http://localhost:3000 k6 run --compatibility-mode=extended k6/baseline.ts
 
 # Full reset
@@ -29,13 +30,15 @@ Migrations, seed, and truncate use `DIRECT_DATABASE_URL` (direct Postgres :5432,
 
 ## Architecture
 
-**Phase 1 (current):** Node.js/TypeScript HTTP app → PgBouncer (transaction mode, :6432) → Postgres. No Redis relay, no metrics yet. The outbox table is written but nothing drains it.
+**Phase 2 (current):** Node.js/TypeScript HTTP app → PgBouncer (transaction mode, :6432) → Postgres, with full Prometheus/Grafana observability. No Redis relay yet — the outbox table is written but nothing drains it.
 
 **Connection topology:** the app connects only to PgBouncer (`DATABASE_URL` → :6432); PgBouncer multiplexes `DEFAULT_POOL_SIZE=20` real Postgres connections across `MAX_CLIENT_CONN=200` clients. Migrations/seed/truncate connect directly to Postgres (`DIRECT_DATABASE_URL` → :5432). Transaction mode breaks server-side *named* prepared statements; node-postgres uses unnamed ones by default, so the app is compatible. Image: `edoburu/pgbouncer`. Inspect pools via `psql .../pgbouncer -c "SHOW POOLS;"` (watch `cl_waiting`).
 
+**Observability (Phase 2):** the app exposes `/metrics` via prom-client (`src/metrics.ts`) — node runtime + HTTP RED + custom optimistic-concurrency counters (`trade_version_conflicts_total`, `trade_retries_exhausted_total`, `trade_attempts_per_request`). The app runs on the **host**, so Prometheus scrapes it at `host.docker.internal:3000`. Infra metrics come from exporters in compose: `postgres_exporter` (:9187), the dedicated `pgbouncer-exporter` (:9127 — `postgres_exporter` can't read the pgbouncer admin protocol), `redis_exporter` (:9121, idle until Phase 3). Prometheus (:9090) holds scrape config + alert rules (`observability/prometheus/`) and a remote-write receiver for k6; Grafana (:3001, admin/admin) auto-provisions a datasource + 3 dashboards (`observability/grafana/`). Dashboard (c) Redis and the queue/relay/DLQ alerts wait for Phase 3.
+
 **Phased build plan:**
 - Phase 1 (done) — PgBouncer (transaction mode) inserted between app and Postgres
-- Phase 2 — Prometheus/Grafana observability
+- Phase 2 (done) — Prometheus/Grafana observability + exporters + k6 remote-write
 - Phase 3 — Redis Streams async path (outbox relay + trade-notifications consumer)
 - Phase 4 — stress/breakpoint experiments
 
@@ -66,8 +69,11 @@ Trade and price-change events are inserted into the `outbox` table inside the tr
 
 | File | Role |
 |---|---|
-| `src/routes/trade.ts` | POST /trade — optimistic concurrency loop |
+| `src/routes/trade.ts` | POST /trade — optimistic concurrency loop (emits conflict/retry metrics) |
+| `src/metrics.ts` | prom-client registry, RED + custom metrics, timing middleware |
 | `src/db/queries.ts` | All SQL; bigint↔string boundary lives here |
+| `observability/prometheus/` | `prometheus.yml` scrape config + `alerts.yml` rules |
+| `observability/grafana/` | provisioned datasource + 3 dashboards |
 | `src/math/lmsr.ts` | LMSR cost + price functions |
 | `src/types/index.ts` | Domain types: `Outcome`, `Market`, `TradeEvent`, `PriceChangeEvent` |
 | `migrations/001_initial_schema.ts` | Tables: users, markets, trades, positions, outbox |

@@ -4,7 +4,7 @@ Binary prediction market (LMSR pricing) built as a learning lab for high-load ba
 
 **Stack:** Node.js + TypeScript + Postgres + Redis + PgBouncer (Phase 1+) + Prometheus/Grafana (Phase 2+)
 
-**Build phases:** Phase 0 → **Phase 1 PgBouncer (current)** → Phase 2 Observability → Phase 3 Redis async → Phase 4 Stress experiments
+**Build phases:** Phase 0 → Phase 1 PgBouncer → **Phase 2 Observability (current)** → Phase 3 Redis async → Phase 4 Stress experiments
 
 ---
 
@@ -26,7 +26,7 @@ Binary prediction market (LMSR pricing) built as a learning lab for high-load ba
 docker compose up -d
 ```
 
-Postgres on `:5432`, Redis on `:6379`, **PgBouncer on `:6432`** (transaction mode, waits for Postgres to be healthy first). Compose waits for all three to be healthy before returning.
+Postgres on `:5432`, Redis on `:6379`, **PgBouncer on `:6432`** (transaction mode, waits for Postgres to be healthy first). Compose also starts the Phase 2 observability stack: **Prometheus on `:9090`**, **Grafana on `:3001`**, and the postgres / pgbouncer / redis exporters (`:9187` / `:9127` / `:9121`).
 
 ### 2. Install dependencies
 
@@ -85,7 +85,8 @@ App listens on `http://localhost:3000`. Uses `tsx` to run TypeScript directly wi
 | `npm run migrate` | Apply pending migrations |
 | `npm run seed` | Seed users + markets |
 | `npm run typecheck` | `tsc --noEmit` (no emit, just type errors) |
-| `docker compose up -d` | Start Postgres + Redis + PgBouncer |
+| `docker compose up -d` | Start Postgres + Redis + PgBouncer + Prometheus + Grafana + exporters |
+| `npm run load-test:rw` | k6 baseline with Prometheus remote-write (metrics land in Grafana) |
 | `docker compose down` | Stop containers, keep data |
 | `docker compose down -v` | Stop containers + **wipe all data** (Postgres volume deleted) |
 
@@ -201,7 +202,8 @@ src/
     trade.ts          POST /trade — optimistic concurrency, atomic transaction
     markets.ts        GET /markets, GET /markets/:id
   types/index.ts      domain types (Outcome, Market, TradeEvent, PriceChangeEvent, …)
-  app.ts              Express app + /health
+  metrics.ts          prom-client registry, RED + custom metrics, middleware
+  app.ts              Express app + /health + /metrics
   server.ts           HTTP server + graceful SIGTERM shutdown
 
 migrations/
@@ -213,7 +215,15 @@ scripts/
 k6/
   baseline.ts         300 RPS constant-arrival-rate scenario
 
-docker-compose.yml    Postgres 16 + Redis 7 + PgBouncer (edoburu, transaction mode)
+observability/
+  prometheus/
+    prometheus.yml    scrape config (app + exporters) + remote-write
+    alerts.yml        PgBouncer cl_waiting + HTTP p99 alert rules
+  grafana/
+    provisioning/     datasource + dashboard providers
+    dashboards/       (a) HTTP RED, (b) Postgres+PgBouncer, (d) Node runtime
+
+docker-compose.yml    Postgres 16 + Redis 7 + PgBouncer + Prometheus + Grafana + exporters
 ```
 
 ---
@@ -250,6 +260,56 @@ Key columns: `cl_waiting` (clients queued for a server connection — should sta
 **Tuning knobs** (`docker-compose.yml` → `pgbouncer.environment`):
 `DEFAULT_POOL_SIZE`, `MAX_CLIENT_CONN`, `POOL_MODE`. Change one, re-run the
 baseline load test, and compare p99 / error rate against the Phase 0 numbers.
+
+---
+
+## Observability (Phase 2)
+
+Prometheus scrapes the app and three infra exporters; Grafana renders the
+dashboards. `docker compose up -d` brings the whole stack up.
+
+| Service | URL | Notes |
+|---------|-----|-------|
+| Grafana | http://localhost:3001 | login `admin` / `admin` (anonymous viewing also enabled) |
+| Prometheus | http://localhost:9090 | targets, rules, ad-hoc PromQL |
+| App metrics | http://localhost:3000/metrics | prom-client (RED + node runtime + custom) |
+| postgres_exporter | http://localhost:9187/metrics | connections, txn rate, deadlocks |
+| pgbouncer_exporter | http://localhost:9127/metrics | `cl_waiting`, pool saturation |
+| redis_exporter | http://localhost:9121/metrics | idle until Phase 3 |
+
+**Scrape targets.** The app runs on the **host**, so Prometheus scrapes it at
+`host.docker.internal:3000`; the exporters are scraped over the compose network.
+Check target health at Prometheus → Status → Targets (all five should be `UP`).
+
+**Metrics the app emits** (`src/metrics.ts`):
+- **Node runtime / RED** — `nodejs_eventloop_lag_p99_seconds`, CPU, RSS, GC, plus
+  `http_request_duration_seconds` (histogram) and `http_requests_total`.
+- **Optimistic concurrency (custom)** — `trade_version_conflicts_total`,
+  `trade_retries_exhausted_total`, `trade_attempts_per_request`. Exporters can't
+  see these; they make retry-storms visible under contention.
+
+**Dashboards** (auto-provisioned, folder *Predmarket*):
+(a) HTTP / RED, (b) Postgres + PgBouncer, (d) Node runtime / event loop.
+Dashboard (c) Redis queues + consumers arrives with the Phase 3 async path.
+
+**Alert rules** (`observability/prometheus/alerts.yml`, visible at Prometheus →
+Alerts):
+- `PgBouncerClientsWaiting` — `cl_waiting > 0` sustained 1m (pool saturation).
+- `HttpP99LatencyBreach` — request p99 > 200ms sustained 2m (budget breach).
+
+**k6 → Prometheus.** Run the load test with native remote-write so load and
+infra metrics share one Grafana timeline:
+
+```bash
+npm run load-test:rw
+```
+
+This pushes `k6_*` series to Prometheus's remote-write receiver (enabled via
+`--web.enable-remote-write-receiver`). Plain `npm run load-test` skips the push.
+
+> **Exporter note:** PgBouncer metrics come from the dedicated
+> `prometheuscommunity/pgbouncer-exporter` (reads the pgbouncer admin console),
+> not `postgres_exporter` — the latter can't speak the pgbouncer admin protocol.
 
 ---
 
