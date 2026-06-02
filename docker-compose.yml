@@ -1,0 +1,48 @@
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: lab
+      POSTGRES_PASSWORD: lab
+      POSTGRES_DB: predmarket
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U lab -d predmarket"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  redis:
+    image: redis:7
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+
+  # pgbouncer:
+  #   image: bitnami/pgbouncer:latest
+  #   environment:
+  #     POSTGRESQL_HOST: postgres
+  #     POSTGRESQL_PORT: 5432
+  #     POSTGRESQL_USERNAME: lab
+  #     POSTGRESQL_PASSWORD: lab
+  #     POSTGRESQL_DATABASE: predmarket
+  #     PGBOUNCER_POOL_MODE: transaction
+  #     PGBOUNCER_DEFAULT_POOL_SIZE: 20
+  #     PGBOUNCER_MAX_CLIENT_CONN: 200
+  #   ports:
+  #     - "6432:6432"
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+
+volumes:
+  postgres_data:

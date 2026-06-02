@@ -1,0 +1,29 @@
+{
+  "name": "nodejs-redis-posgres",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx src/server.ts",
+    "migrate": "node-pg-migrate up --tsx",
+    "seed": "tsx scripts/seed.ts",
+    "typecheck": "tsc --noEmit",
+    "load-test": "k6 run --compatibility-mode=extended k6/baseline.ts",
+    "test": "tsx --test tests/e2e.test.ts"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "node-pg-migrate": "^7.4.0",
+    "pg": "^8.11.5"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/k6": "^2.0.0",
+    "@types/node": "^20.14.0",
+    "@types/pg": "^8.11.5",
+    "k6": "^0.0.0",
+    "tsx": "^4.15.7",
+    "typescript": "^5.4.5"
+  }
+}
